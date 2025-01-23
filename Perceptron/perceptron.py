@@ -37,5 +37,6 @@ for _ in range(epoch):
             plt.plot(x1, -w[0] / w[1] * x1, linestyle='dashed', color='red')
             plt.plot(x[0], x[1], "*", markersize=15, color='red')
             plt.ylim([0, 500])
+            plt.title('Perceptron')
             plt.show()
             sleep(0.1)

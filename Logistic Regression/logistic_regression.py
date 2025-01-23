@@ -61,9 +61,9 @@ def plot_decision_boundary(train_z, train_y, theta, iteration=None):
     plt.xlabel('Feature 1 (Standardized)')
     plt.ylabel('Feature 2 (Standardized)')
     if iteration is not None:
-        plt.title(f'Decision Boundary (Iteration {iteration})')
+        plt.title(f'Logistic Regression (Iteration {iteration})')
     else:
-        plt.title('Decision Boundary')
+        plt.title('Logistic Regression')
     plt.legend()
     plt.ylim(-2, 2)
     plt.xlim(-2, 2)
@@ -79,7 +79,7 @@ plot_decision_boundary(train_z, train_y, theta, iteration=0)
 
 # 梯度下降参数
 ETA = 1e-3  # 学习率
-epoch = 5000  # 最大迭代次数
+epoch = 2500  # 最大迭代次数
 
 # 梯度下降训练
 for i in range(epoch):
