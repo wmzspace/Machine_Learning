@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文本安全AI检测工具</title>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --primary-light: #EEF2FF;
+            --success: #059669;
+            --success-light: #D1FAE5;
+            --warning: #D97706;
+            --warning-light: #FEF3C7;
+            --danger: #DC2626;
+            --danger-light: #FEE2E2;
+            --border: #E5E7EB;
+            --text-primary: #1F2937;
+            --text-secondary: #6B7280;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background: linear-gradient(135deg, #f6f7ff 0%, #f0f4ff 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+            padding: 2.5rem;
+            max-width: 700px;
+            width: 100%;
+            transition: all 0.3s ease;
+        }
+
+        .container:hover {
+            box-shadow: 0 6px 32px rgba(0, 0, 0, 0.12);
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, var(--primary) 0%, #6366F1 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+        }
+
+        .input-container {
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 1.25rem;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            font-size: 1rem;
+            resize: none;
+            transition: all 0.3s ease;
+            background: var(--primary-light);
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+        }
+
+        .char-count {
+            position: absolute;
+            bottom: 0.5rem;
+            right: 1rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        button {
+            width: 100%;
+            padding: 1rem 1.5rem;
+            background: var(--primary);
+            color: #ffffff;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        #loading {
+            display: none;
+            text-align: center;
+            margin: 2rem 0;
+            color: var(--text-secondary);
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 2rem;
+            height: 2rem;
+            border: 3px solid var(--primary-light);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s linear infinite;
+            margin-bottom: 0.5rem;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .results-container {
+            margin-top: 2rem;
+            display: none;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.4s ease;
+        }
+
+        .results-container.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .result {
+            padding: 1.25rem;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            text-align: left;
+            font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .result:last-child {
+            margin-bottom: 0;
+        }
+
+        .result .label {
+            font-weight: 600;
+        }
+
+        .result .probability {
+            font-size: 0.875rem;
+            opacity: 0.9;
+        }
+
+        .result.success {
+            background: var(--success-light);
+            color: var(--success);
+        }
+
+        .result.warning {
+            background: var(--warning-light);
+            color: var(--warning);
+        }
+
+        .result.danger {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+
+        footer {
+            margin-top: 2.5rem;
+            text-align: center;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        footer a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        footer a:hover {
+            color: var(--primary-hover);
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 1rem;
+            }
+
+            .container {
+                padding: 1.5rem;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>文本安全AI检测工具</h1>
+        <form id="text-form">
+            <div class="input-container">
+                <textarea
+                    id="text-input"
+                    rows="5"
+                    maxlength="5000"
+                    placeholder="请输入需要检测的文本内容..."
+                ></textarea>
+                <div class="char-count">0/5000</div>
+            </div>
+            <button type="submit" id="submit-button">
+                <span>开始检测</span>
+            </button>
+        </form>
+        <div id="loading">
+            <div class="loading-spinner"></div>
+            <div>正在分析中...</div>
+        </div>
+        <div class="results-container" id="results-container">
+            <div id="results"></div>
+        </div>
+        <footer>
+            Created with ❤️ by <a href="#" target="_blank">Mianzi Wu</a>
+        </footer>
+    </div>
+
+    <script>
+        const textInput = document.getElementById("text-input");
+        const submitButton = document.getElementById("submit-button");
+        const loading = document.getElementById("loading");
+        const resultsContainer = document.getElementById("results-container");
+        const resultText = document.getElementById("results");
+        const charCount = document.querySelector(".char-count");
+
+        // 更新字符计数
+        textInput.addEventListener("input", () => {
+            const count = textInput.value.length;
+            charCount.textContent = `${count}/5000`;
+        });
+
+        function getResultClass(label) {
+            if (label === "无异常内容") {
+                return "success";
+            } else if (label.includes("轻度") || label === "警告") {
+                return "warning";
+            } else {
+                return "danger";
+            }
+        }
+
+        function showLoading() {
+            loading.style.display = "block";
+            submitButton.disabled = true;
+            resultsContainer.style.display = "none";
+            resultsContainer.classList.remove("show");
+        }
+
+        function showResults(result) {
+            loading.style.display = "none";
+            submitButton.disabled = false;
+            resultsContainer.style.display = "block";
+
+            // 使用 setTimeout 确保 display:block 生效后再添加动画类
+            setTimeout(() => {
+                resultsContainer.classList.add("show");
+            }, 10);
+
+            if (Array.isArray(result)) {
+                resultText.innerHTML = "";
+                result.forEach(([label, probability]) => {
+                    const resultDiv = document.createElement("div");
+                    resultDiv.className = `result ${getResultClass(label)}`;
+                    resultDiv.innerHTML = `
+                        <span class="label">${label}</span>
+                        <span class="probability">${(probability * 100).toFixed(2)}%</span>
+                    `;
+                    resultText.appendChild(resultDiv);
+                });
+            } else {
+                resultText.innerHTML = `
+                    <div class="result success">
+                        <span class="label">${result || "未检测到异常内容"}</span>
+                    </div>
+                `;
+            }
+        }
+
+        async function handleSubmit(event) {
+            event.preventDefault();
+
+            const text = textInput.value.trim();
+            if (!text) {
+                alert("请输入文本内容");
+                return false;
+            }
+
+            showLoading();
+
+            try {
+                const response = await fetch("/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text }),
+                });
+
+                const data = await response.json();
+                if (data.error) {
+                    showResults(`错误: ${data.error}`);
+                } else if (data.results && data.results.length > 0) {
+                    showResults(data.results);
+                } else {
+                    showResults("检测完成，但未发现任何匹配结果。");
+                }
+            } catch (error) {
+                console.error(error);
+                showResults("无法连接到服务器，请稍后重试。");
+            }
+        }
+
+        // 绑定表单提交事件
+        document.getElementById("text-form").addEventListener("submit", handleSubmit);
+
+        // 添加回车键提交功能
+        textInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault(); // 防止换行
+                submitButton.click(); // 模拟点击提交按钮
+            }
+        });
+    </script>
+</body>
+</html>
