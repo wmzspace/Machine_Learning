@@ -6,8 +6,8 @@
 此外，逻辑回归需要通过特征转换来处理非线性问题，但其适用范围更广，可用于二分类、多分类和概率预测任务。
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
 # 加载数据
 train = np.loadtxt('data3.csv', delimiter=',', skiprows=1)
@@ -68,9 +68,25 @@ def classify(X):
     return (predictions >= 0.5).astype(int)  # 概率 >= 0.5 则分类为 1，否则分类为 0
 
 
+p = np.random.permutation(X.shape[0])  # 随机打乱数据
+batch_size = 32  # 每个小批次的大小
+X_shuffled, y_shuffled = X[p], train_y[p]
+
 # 训练逻辑回归模型
 for epoch in range(EPOCHS):
-    theta = update_theta(X, train_y, theta, ETA)  # 更新参数
+    # 随机梯度下降更新参数 (SGD)
+    for x, y in zip(X[p, :], train_y[p]):
+        theta = update_theta(x, y, theta, ETA)
+
+    # 批量梯度下降(Batch GD)
+    # theta = update_theta(X, train_y, theta, ETA)  # 批量梯度下降更新参数
+
+    # 小批量梯度下降 (Mini-Batch Gradient Descent)
+    # for i in range(0, X.shape[0], batch_size):
+    #     X_batch = X_shuffled[i:i + batch_size]
+    #     y_batch = y_shuffled[i:i + batch_size]
+    #     theta = update_theta(X_batch, y_batch, theta, ETA)  # 使用小批次更新
+
     result = classify(X) == train_y
     accuracy = np.mean(result)
     accuracies.append(accuracy)
