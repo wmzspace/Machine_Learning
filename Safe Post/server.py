@@ -1,6 +1,6 @@
 import joblib
+import requests
 from flask import Flask, request, render_template, jsonify
-from googletrans import Translator
 
 app = Flask(__name__)
 
@@ -8,22 +8,65 @@ app = Flask(__name__)
 LABELS = {"toxic": "恶意", "severe_toxic": "严重恶意", "obscene": "淫秽", "threat": "威胁", "insult": "侮辱",
           "identity_hate": "身份仇恨"}
 
+# 百度翻译 API 配置
+API_KEY = "MU5qXT0i0j3EyxsWH16MGgnQ"  # 替换为你的百度翻译 API Key
+SECRET_KEY = "plwhV5XMxw6P53m0VoD4uDXevFHZu5FZ"  # 替换为你的百度翻译 Secret Key
+
+
+def get_access_token():
+    """
+    获取百度翻译 API 的 Access Token
+    """
+    url = f"https://aip.baidubce.com/oauth/2.0/token"
+    params = {"grant_type": "client_credentials", "client_id": API_KEY, "client_secret": SECRET_KEY, }
+    response = requests.get(url, params=params)
+    result = response.json()
+    if "access_token" in result:
+        return result["access_token"]
+    else:
+        raise Exception(f"Failed to get access token: {result}")
+
 
 def translate_and_detect_language(text):
     """
-    使用 Googletrans 翻译文本并检测语言。
+    使用百度翻译 API 翻译文本并检测语言。
     如果是中文，则翻译为英文；如果是英文，则翻译为中文。
     """
-    translator = Translator()
     try:
-        # 检测语言
-        detected_lang = translator.detect(text)
-        if detected_lang.lang == 'zh-CN':  # 如果是中文，翻译为英文
-            translation = translator.translate(text, src='zh-cn', dest='en')
-            return translation.text, f"翻译为英文: {translation.text}"
-        else:  # 如果是其他语言，翻译为中文
-            translation = translator.translate(text, src='en', dest='zh-cn')
-            return text, f"翻译为中文: {translation.text}"
+        # 获取 Access Token
+        access_token = get_access_token()
+        url = f"https://aip.baidubce.com/rpc/2.0/mt/texttrans/v1?access_token={access_token}"
+
+        # 检测语言（简单实现：根据字符判断是否为中文）
+        def is_chinese(text):
+            for char in text:
+                if '\u4e00' <= char <= '\u9fff':
+                    return True
+            return False
+
+        # 设置翻译方向
+        from_lang = "zh" if is_chinese(text) else "en"
+        to_lang = "en" if from_lang == "zh" else "zh"
+
+        # 构造请求数据
+        headers = {"Content-Type": "application/json"}
+        payload = {"q": text, "from": from_lang, "to": to_lang, }
+
+        # 发送 POST 请求
+        response = requests.post(url, json=payload, headers=headers)
+        result = response.json()
+
+        # 检查返回结果
+        if "result" in result and "trans_result" in result["result"]:
+            translated_text = result["result"]["trans_result"][0]["dst"]
+            if from_lang == "zh":
+                return translated_text, f"翻译为英文: {translated_text}"
+            else:
+                return text, f"翻译为中文: {translated_text}"
+        else:
+            error_msg = result.get("error_msg", "未知错误")
+            print(f"Error from Baidu API: {error_msg}")
+            return text, "翻译失败"
     except Exception as e:
         print(f"Error translating text: {e}")
         return text, "翻译失败"
@@ -87,9 +130,5 @@ def index():
     return render_template("index.html")
 
 
-def main():
-    app.run(debug=True, port=5002, host="0.0.0.0")
-
-
 if __name__ == "__main__":
-    main()
+    app.run(debug=True, port=5003, host="0.0.0.0")
