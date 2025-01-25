@@ -29,7 +29,7 @@ def translate_and_detect_language(text):
         return text, "翻译失败"
 
 
-def load_model_and_predict(model_filename, vectorizer_filename, new_data):
+def load_model_and_predict(model_filename, vectorizer_filename, scaler_filename, new_data):
     """
     加载保存的模型和向量化器，并对新数据进行预测。
     """
@@ -37,15 +37,21 @@ def load_model_and_predict(model_filename, vectorizer_filename, new_data):
         # 加载模型和向量化器
         model = joblib.load(model_filename)
         vectorizer = joblib.load(vectorizer_filename)
+        scaler = joblib.load(scaler_filename)
+
+        new_data = [new_data]
 
         # 转换新数据为特征向量
-        new_data_tfidf = vectorizer.transform([new_data])
+        new_data_tfidf = vectorizer.transform(new_data)
+
+        new_data_tfidf = scaler.transform(new_data_tfidf)
 
         # 预测概率
         predictions = model.predict_proba(new_data_tfidf)
-        return predictions[0]
+        return predictions
     except FileNotFoundError as e:
         print(f"Error: {e}")
+        print("Please ensure the model and vectorizer files exist.")
         return None
 
 
@@ -62,14 +68,15 @@ def index():
         # 加载模型和预测
         model_filename = "./model/model.joblib"
         vectorizer_filename = "./model/vectorizer.joblib"
-        predictions = load_model_and_predict(model_filename, vectorizer_filename, processed_text)
+        scaler_filename = "./model/scaler.joblib"
+        predictions = load_model_and_predict(model_filename, vectorizer_filename, scaler_filename, processed_text)
 
         if predictions is None:
             return jsonify({"error": "无法加载模型或向量化器文件！"}), 500
 
         # 格式化预测结果
         threshold = 0.5
-        formatted_results = [(LABELS[label], prob) for label, prob in zip(LABELS.keys(), predictions) if
+        formatted_results = [(LABELS[label], float(prob)) for label, prob in zip(LABELS.keys(), predictions[0]) if
                              prob >= threshold]
 
         # 如果没有任何异常内容，返回默认提示

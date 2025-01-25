@@ -1,11 +1,22 @@
+import cupy as cp
+import cupyx.scipy.sparse as cupy_sparse
 import joblib
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, roc_curve, roc_auc_score, multilabel_confusion_matrix
-from sklearn.multiclass import OneVsRestClassifier
+from sklearn.model_selection import train_test_split
+
+GPU = False
+
+# precision    recall  f1-score
+# 0.41      0.81      0.51
+MAX_FEATURES = 10000
+MAX_ITER = 1000
+LEARNING_RATE = 0.1
+C = 0.5
+RANDOM_SEED = 42
 
 
 # 加载数据
@@ -26,41 +37,80 @@ def preprocess_data(train, test, test_labels):
     test = test[test['id'].isin(valid_test_ids)]
 
     # 提取特征和标签
-    X_train = train['comment_text']
-    y_train = train[['toxic', 'severe_toxic', 'obscene', 'threat', 'insult', 'identity_hate']]
-    X_test = test['comment_text']
-    return X_train, y_train, X_test, test['id']
+    X_train, X_test, y_train, y_test = train_test_split(train['comment_text'], train[
+        ['toxic', 'severe_toxic', 'obscene', 'threat', 'insult', 'identity_hate']], test_size=0.2,
+                                                        random_state=RANDOM_SEED)
+
+    # X_train = train['comment_text']
+    # y_train = train[['toxic', 'severe_toxic', 'obscene', 'threat', 'insult', 'identity_hate']]
+    X_submit = test['comment_text']
+    return X_train, y_train, X_test, y_test, X_submit, test["id"]
 
 
-# 特征提取
-def extract_features(X_train, X_test, max_features=5000):
+from sklearn.preprocessing import StandardScaler
+
+
+# 特征提取（保持原有逻辑）
+def extract_features(X_train, X_test, X_submit, max_features=MAX_FEATURES):
     """
     使用 TfidfVectorizer 提取文本特征。
     """
     vectorizer = TfidfVectorizer(max_features=max_features, ngram_range=(1, 2), stop_words='english')
     X_train_tfidf = vectorizer.fit_transform(X_train)
     X_test_tfidf = vectorizer.transform(X_test)
-    return X_train_tfidf, X_test_tfidf, vectorizer
+    X_submit_tfidf = vectorizer.transform(X_submit)
+
+    return X_train_tfidf, X_test_tfidf, X_submit_tfidf, vectorizer
+
+
+# 添加标准化处理
+def standardize_features(X_train_tfidf, X_test_tfidf, X_submit_tfidf):
+    """
+    对特征进行标准化（Z-Score 标准化）。
+    """
+
+    scaler = StandardScaler(with_mean=False)  # 稀疏矩阵不能计算均值
+    X_train_tfidf = scaler.fit_transform(X_train_tfidf)
+    X_test_tfidf = scaler.transform(X_test_tfidf)
+    X_submit_tfidf = scaler.transform(X_submit_tfidf)
+
+    return X_train_tfidf, X_test_tfidf, X_submit_tfidf, scaler
 
 
 # 模型训练
+from models import OneVsRestClassifierFromScratch, LogisticRegressionFromScratch
+
+
 def train_model(X_train_tfidf, y_train):
     """
     使用 OneVsRestClassifier 包装 LogisticRegression 进行多标签分类。
     """
-    model = OneVsRestClassifier(LogisticRegression(class_weight='balanced', max_iter=1000, C=0.5))
-    model.fit(X_train_tfidf, y_train)
+    print("START TRAINING")
+    # model = OneVsRestClassifier(LogisticRegression(class_weight='balanced', max_iter=5000, C=0.5))
+    # model = OneVsRestClassifier(LogisticRegression(class_weight='balanced', max_iter=5000, C=0.5, solver='lbfgs'))
+
+    # 初始化自定义模型
+    model = OneVsRestClassifierFromScratch(
+        base_estimator=LogisticRegressionFromScratch(lr=LEARNING_RATE, max_iter=MAX_ITER, C=C, class_weight='balanced'))
+    if GPU:
+        model.fit(X_train_tfidf.get(), y_train)
+    else:
+        model.fit(X_train_tfidf, y_train)
+    print("OVER TRAINING")
     return model
 
 
 # 保存模型
-def save_model(model, vectorizer, model_filename='model.joblib', vectorizer_filename='vectorizer.joblib'):
+def save_model(model, vectorizer, scaler, model_filename='model.joblib', vectorizer_filename='vectorizer.joblib',
+               scaler_filename='scaler.joblib'):
     """
     保存训练好的模型和向量化器到本地文件。
     """
     joblib.dump(model, model_filename)
     joblib.dump(vectorizer, vectorizer_filename)
-    print(f"Model saved to {model_filename} and vectorizer saved to {vectorizer_filename}.")
+    joblib.dump(scaler, scaler_filename)
+    print(
+        f"Model saved to {model_filename}.\nVectorizer saved to {vectorizer_filename}.\n Scaler saved to {scaler_filename}.")
 
 
 # 加载模型并预测
@@ -84,6 +134,12 @@ def print_classification_report(y_true, y_pred, categories):
     """
     打印分类报告，包括 precision、recall 和 f1-score。
     """
+    # 将CuPy数组转换为NumPy数组
+    if isinstance(y_true, cp.ndarray):
+        y_true = y_true.get()
+    if isinstance(y_pred, cp.ndarray):
+        y_pred = y_pred.get()
+
     print("Classification Report:")
     report = classification_report(y_true, y_pred, target_names=categories, zero_division=1)
     print(report)
@@ -95,7 +151,7 @@ def plot_multilabel_confusion_matrix(y_true, y_pred, categories):
     绘制多标签混淆矩阵。
     """
     cm = multilabel_confusion_matrix(y_true, y_pred)
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))  # 创建子图
+    fig, axes = plt.subplots(nrows=(len(categories) + 2) // 3, ncols=3, figsize=(15, 10))
     for i, ax in enumerate(axes.flatten()):
         sns.heatmap(cm[i], annot=True, fmt='d', cmap='Blues', ax=ax)
         ax.set_title(f'Confusion Matrix for {categories[i]}')
@@ -110,6 +166,12 @@ def plot_roc_curves(y_true, y_pred_proba, categories):
     """
     绘制每个类别的 ROC 曲线。
     """
+    # 如果是CuPy数组，转换为NumPy数组
+    if isinstance(y_true, cp.ndarray):
+        y_true = y_true.get()
+    if isinstance(y_pred_proba, cp.ndarray):
+        y_pred_proba = y_pred_proba.get()
+
     plt.figure(figsize=(10, 8))
     for i, category in enumerate(categories):
         fpr, tpr, _ = roc_curve(y_true[category], y_pred_proba[:, i])
@@ -125,16 +187,24 @@ def plot_roc_curves(y_true, y_pred_proba, categories):
 
 
 # 预测与提交
-def predict_and_submit(model, X_test_tfidf, test_ids, output_file='submission.csv'):
+def predict_and_submit(model, X_test, test_ids, output_file='submission.csv'):
     """
-    预测测试集并生成提交文件。
+    使用模型预测测试集，并生成提交文件。
     """
-    y_pred_proba = model.predict_proba(X_test_tfidf)
-    submission = pd.DataFrame(y_pred_proba,
+    # 使用模型预测
+    y_pred_proba = model.predict_proba(X_test)
+
+    # 如果是CuPy数组，转换为NumPy数组
+    if isinstance(y_pred_proba, cp.ndarray):
+        y_pred_proba = y_pred_proba.get()
+
+    # 创建提交 DataFrame
+    submission = pd.DataFrame(data=y_pred_proba, index=test_ids,
                               columns=['toxic', 'severe_toxic', 'obscene', 'threat', 'insult', 'identity_hate'])
-    submission.insert(0, 'id', test_ids)
-    submission.to_csv(output_file, index=False)
-    print(f"Submission saved to {output_file}")
+
+    # 保存到 CSV 文件
+    submission.to_csv(output_file)
+    print(f'Submission saved to {output_file}')
 
 
 # 主函数
@@ -143,37 +213,48 @@ def main():
     train, test, test_labels = load_data()
 
     # 数据预处理
-    X_train, y_train, X_test, test_ids = preprocess_data(train, test, test_labels)
+    X_train, y_train, X_test, y_test, X_submit, test_ids = preprocess_data(train, test, test_labels)
     categories = ['toxic', 'severe_toxic', 'obscene', 'threat', 'insult', 'identity_hate']
 
     # 特征提取
-    X_train_tfidf, X_test_tfidf, vectorizer = extract_features(X_train, X_test)
+    X_train_tfidf, X_test_tfidf, X_submit_tfidf, vectorizer = extract_features(X_train, X_test, X_submit)
+
+    # 标准化特征
+    X_train_tfidf, X_test_tfidf, X_submit_tfidf, scaler = standardize_features(X_train_tfidf, X_test_tfidf,
+                                                                               X_submit_tfidf)
+
+    if GPU:
+        X_train_tfidf = cupy_sparse.csr_matrix(X_train_tfidf)
+        X_test_tfidf = cupy_sparse.csr_matrix(X_test_tfidf)
+        X_submit_tfidf = cupy_sparse.csr_matrix(X_submit_tfidf)
 
     # 模型训练
     model = train_model(X_train_tfidf, y_train)
 
     # 预测概率
-    y_pred_proba = model.predict_proba(X_train_tfidf)
+    y_pred_proba = model.predict_proba(X_test_tfidf.get() if GPU else X_test_tfidf)
 
     # 调整阈值（可选）
     y_pred = (y_pred_proba >= 0.5).astype(int)  # 使用默认阈值 0.5 二值化
 
     # 输出分类指标
-    print_classification_report(y_train, y_pred, categories)
+    y_pred = y_pred.get() if isinstance(y_pred, cp.ndarray) else y_pred
+    y_test = y_test.get() if isinstance(y_test, cp.ndarray) else y_test
+    print_classification_report(y_test, y_pred, categories)
 
     # 绘制混淆矩阵
-    plot_multilabel_confusion_matrix(y_train, y_pred, categories)
+    plot_multilabel_confusion_matrix(y_test, y_pred, categories)
 
     # 绘制 ROC 曲线
-    plot_roc_curves(y_train, y_pred_proba, categories)
+    plot_roc_curves(y_test, y_pred_proba, categories)
 
     # 询问是否保存模型
     save_choice = input("Do you want to save the model? (yes/no): ").strip().lower()
     if save_choice == 'yes':
-        save_model(model, vectorizer)
+        save_model(model, vectorizer, scaler)
 
-    # 预测与提交
-    predict_and_submit(model, X_test_tfidf, test_ids)
+    # 模型预测并生成提交文件
+    predict_and_submit(model, X_submit_tfidf, test_ids)
 
 
 # 运行主函数
